@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Tamagotchi Dulik jr</title>
+
+  <!-- Шрифт -->
+  <link href="https://fonts.googleapis.com/css2?family=Bangers&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg1: #0A0A1A;
+      --bg2: #2D006B;
+      --accent: #FF00A0;
+      --accent2: #00FFFF;
+      --hover: #FFEA00;
+      --text: #E6EEF8;
+      --muted: #9ca3af;
+    }
+
+    html,body {
+      margin:0; padding:0; height:100%;
+      background: linear-gradient(135deg, var(--bg1), var(--bg2));
+      font-family: 'Bangers', cursive;
+      color: var(--text);
+      overflow:hidden;
+    }
+
+    #app {
+      display:grid;
+      grid-template-columns:1fr 340px;
+      gap:20px;
+      height:100vh;
+      padding:18px;
+      box-sizing:border-box;
+    }
+
+    /* Сцена */
+    .sceneCard {
+      background: radial-gradient(circle at center, rgba(0,255,255,0.1), rgba(255,0,160,0.05));
+      border-radius:20px;
+      box-shadow:0 0 60px rgba(255,0,160,0.2);
+      display:flex;
+      flex-direction:column;
+      position:relative;
+      overflow:hidden;
+    }
+
+    #canvasWrap {
+      flex:1;
+      border-radius:20px;
+      overflow:hidden;
+      position:relative;
+    }
+    canvas { width:100%; height:100%; display:block; }
+
+    /* Панель */
+    .side {
+      background:rgba(255,255,255,0.05);
+      border:2px solid rgba(255,0,160,0.4);
+      border-radius:20px;
+      padding:16px;
+      box-shadow:0 0 30px rgba(255,0,160,0.4);
+      display:flex;
+      flex-direction:column;
+      justify-content:space-between;
+    }
+
+    h1 {
+      text-align:center;
+      font-size:26px;
+      color:var(--accent);
+      text-shadow:0 0 10px var(--accent);
+      margin:0 0 10px 0;
+    }
+
+    .stats { display:grid; gap:12px; }
+    .statRow { display:flex; flex-direction:column; gap:4px; }
+    .statLabel { display:flex; justify-content:space-between; font-size:14px; color:var(--accent2); text-shadow:0 0 4px var(--accent2); }
+    .bar { height:12px; background:rgba(255,255,255,0.08); border-radius:999px; overflow:hidden; }
+    .barInner { height:100%; width:50%; background:linear-gradient(90deg, var(--accent2), var(--accent)); transition:width 400ms ease; }
+
+    .controls { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:14px; }
+    button {
+      background:linear-gradient(135deg,var(--accent),var(--accent2));
+      color:#fff;
+      border:0;
+      border-radius:12px;
+      padding:10px;
+      font-size:16px;
+      cursor:pointer;
+      box-shadow:0 0 12px rgba(0,255,255,0.4);
+      transition:all 0.2s ease;
+    }
+    button:hover {
+      transform:scale(1.08);
+      box-shadow:0 0 20px var(--hover);
+      background:linear-gradient(135deg,var(--accent2),var(--accent));
+    }
+
+    .log {
+      margin-top:10px;
+      background:rgba(0,0,0,0.3);
+      border-radius:12px;
+      padding:10px;
+      font-size:13px;
+      color:var(--muted);
+      height:80px;
+      overflow:auto;
+    }
+
+    .popup {
+      position:fixed;
+      top:50%; left:50%;
+      transform:translate(-50%, -50%) scale(0.8);
+      background:rgba(255,0,160,0.85);
+      color:#fff;
+      padding:20px 30px;
+      border-radius:20px;
+      text-align:center;
+      font-size:20px;
+      box-shadow:0 0 40px rgba(255,0,160,0.6);
+      opacity:0;
+      transition:all 0.4s ease;
+      pointer-events:none;
+      z-index:9999;
+    }
+    .popup.show {
+      opacity:1;
+      transform:translate(-50%, -50%) scale(1);
+    }
+
+    @media (max-width:900px) {
+      #app { grid-template-columns:1fr; grid-template-rows:60vh 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <div id="app">
+    <div class="sceneCard"><div id="canvasWrap"></div></div>
+
+    <div class="side">
+      <div>
+        <h1>твой карманный дулик джуниор</h1>
+        <div id="stats" class="stats"></div>
+
+        <div class="controls">
+          <button id="btnFeed">🍔 покормить</button>
+          <button id="btnPlay">🎮 поиграть</button>
+          <button id="btnvalo">💣 вало</button>
+          <button id="btnSleep">💤 спатки</button>
+          <button id="btnClean">🫧 помыть</button>
+          <button id="btnkiss">💋 поцеловать</button>
+        </div>
+
+        <div class="log" id="log"></div>
+      </div>
+
+      <button id="reset">📷 скинуть фото</button>
+    </div>
+  </div>
+
+  <div id="popup" class="popup">видеть твою улыбку — лучшее лекарство душенька моя!</div>
+
+  <!-- Three.js -->
+  <script src="https://unpkg.com/three@0.154.0/build/three.min.js"></script>
+  <script>
+  const defaultState = {
+  hunger:70, happiness:80, energy:80, cleanliness:90,
+  love:0,       
+  loveLevel:1,   
+  lastTick:Date.now(),
+  name:'твой карманный дулик джуниор'
+};
+
+
+  const LS_KEY = 'tamagotchi_jinx_v1';
+  const clamp=v=>Math.max(0,Math.min(100,v));
+  let state = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
+
+// проверяем каждый параметр
+state = {
+  hunger: state.hunger ?? defaultState.hunger,
+  happiness: state.happiness ?? defaultState.happiness,
+  energy: state.energy ?? defaultState.energy,
+  cleanliness: state.cleanliness ?? defaultState.cleanliness,
+  love: state.love ?? defaultState.love,
+  loveLevel: state.loveLevel ?? defaultState.loveLevel,
+  lastTick: state.lastTick ?? defaultState.lastTick,
+  name: state.name ?? defaultState.name
+};
+
+  const save=()=>localStorage.setItem(LS_KEY,JSON.stringify(state));
+
+  const statsEl=document.getElementById('stats'), logEl=document.getElementById('log');
+  const popup=document.getElementById('popup');
+  const log=t=>{const r=document.createElement('div');r.textContent='['+new Date().toLocaleTimeString()+'] '+t;logEl.prepend(r);};
+  const renderStats=()=>{
+    statsEl.innerHTML='';
+    [['голод',state.hunger],
+ ['счастье',state.happiness],
+ ['энергия',state.energy],
+ ['чистота',state.cleanliness],
+ ['любовь 💖', state.love]]  // прогресс любви
+.forEach(([l,v])=>{
+    const r = document.createElement('div');
+    r.className = 'statRow';
+    const lab = document.createElement('div');
+    lab.className = 'statLabel';
+    if(l === 'любовь 💖'){
+        lab.innerHTML = `<span>${l} (уровень ${state.loveLevel})</span><span>${Math.round(v)}</span>`;
+    } else {
+        lab.innerHTML = `<span>${l}</span><span>${Math.round(v)}</span>`;
+    }
+    const b = document.createElement('div'); b.className='bar';
+    const inr = document.createElement('div'); inr.className='barInner';
+    inr.style.width = Math.max(0,Math.min(100,v))+'%';
+    inr.style.background = 'linear-gradient(90deg, #FF69B4, #FF1493)';
+    b.appendChild(inr); r.appendChild(lab); r.appendChild(b);
+    statsEl.appendChild(r);
+});
+  };
+
+  // actions
+  function actionFeed(){state.hunger=clamp(state.hunger+20);state.cleanliness-=3;log('Покормил питомца');save();renderStats();playAnim('eat');}
+  function actionPlay(){state.happiness=clamp(state.happiness+15);state.energy=clamp(state.energy-5);log('лучшее время провождения - с тобой!');save();renderStats();playAnim('play');}
+  function actionValo(){state.happiness=clamp(state.happiness-10);log('Поиграли в вало, чуть подустал...');save();renderStats();playAnim('valo');}
+  function actionSleep(){state.energy=clamp(state.energy+30);state.hunger-=5;log('Отдыхает...');save();renderStats();playAnim('sleep');}
+  function actionClean(){state.cleanliness=clamp(state.cleanliness+25);log('Помыла дулика');save();renderStats();playAnim('clean');}
+  function actionKiss(){
+  state.happiness = 100;
+  state.love += 10; // увеличиваем любовь на 10
+  if(state.love >= 100){  // если заполнено
+    state.love = 0;        // сброс прогресса
+    state.loveLevel += 1;  // новый уровень
+    popup.textContent = `💖 Любовь достигла нового уровня! Уровень ${state.loveLevel}`;
+    popup.classList.add('show');
+    setTimeout(()=>popup.classList.remove('show'), 3000);
+  } else {
+    popup.textContent = '💋 Ты осыпаешь дулика поцелуями! Он сияет от счастья!';
+    popup.classList.add('show');
+    setTimeout(()=>popup.classList.remove('show'),3000);
+  }
+  log('Ты поцеловала дулика 💋');
+  save(); renderStats(); playAnim('kiss');
+}
+
+
+
+
+
+  document.getElementById('btnFeed').onclick=actionFeed;
+  document.getElementById('btnPlay').onclick=actionPlay;
+  document.getElementById('btnvalo').onclick=actionValo;
+  document.getElementById('btnSleep').onclick=actionSleep;
+  document.getElementById('btnClean').onclick=actionClean;
+  document.getElementById('btnkiss').onclick=actionKiss;
+
+  document.getElementById('reset').onclick=()=>{
+  popup.textContent='видеть твою улыбку — лучшее лекарство душенька моя!';
+  popup.classList.add('show');
+  setTimeout(()=>popup.classList.remove('show'),3000);
+};
+
+
+  
+  const TICK_MS=6000;
+  function updatePetVisuals() {
+  const baseColor = new THREE.Color(0x67e8f9); // нормальный цвет
+  const darkColor = new THREE.Color(0x222222); // грязь
+  const paleColor = new THREE.Color(0xaaaaff); // бледность от голода
+  const cleanFactor = state.cleanliness / 100; // 1 = чистый, 0 = грязный
+  const hungerFactor = state.hunger / 100;     // 1 = сытый, 0 = голодный
+  const color = baseColor.clone().lerp(paleColor, 1 - hungerFactor);
+  color.lerp(darkColor, 1 - cleanFactor);
+
+  body.material.color.copy(color);
+  body.material.emissiveIntensity = 0.2 + (state.happiness / 500);
+}
+function showDeath() {
+  popup.textContent = "Дулик умер... Нужно было кормить!";
+  popup.classList.add('show');
+
+  // блокируем кнопки
+  document.querySelectorAll('.controls button').forEach(btn => btn.disabled = true);
+
+  // можно сделать анимацию "упавшего" дулика
+  pet.rotation.x = Math.PI/2; // например, лег на бок
+}
+
+  // Scene
+  const cont=document.getElementById('canvasWrap');
+  const scene=new THREE.Scene();
+  const cam=new THREE.PerspectiveCamera(45,1,0.1,100); cam.position.set(0, 0.5, 3);
+  const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+  renderer.setSize(800,600);cont.appendChild(renderer.domElement);
+  new ResizeObserver(()=>{renderer.setSize(cont.clientWidth,cont.clientHeight);cam.aspect=cont.clientWidth/cont.clientHeight;cam.updateProjectionMatrix();}).observe(cont);
+
+  const light1=new THREE.PointLight(0xFF00A0,1,10);light1.position.set(2,3,2);scene.add(light1);
+  const light2=new THREE.PointLight(0x00FFFF,1,10);light2.position.set(-2,2,1);scene.add(light2);
+
+  const pet=new THREE.Group();scene.add(pet);
+  const bodyMat=new THREE.MeshStandardMaterial({color:0x67e8f9, emissive:0xFF00A0, emissiveIntensity:0.2, roughness:0.3});
+  const body=new THREE.Mesh(new THREE.SphereGeometry(0.8,48,32),bodyMat);pet.add(body);
+  const eyeGeo=new THREE.SphereGeometry(0.09,16,12);
+  const eyeMat=new THREE.MeshStandardMaterial({color:0x04142b});
+  const le=new THREE.Mesh(eyeGeo,eyeMat);le.position.set(-0.25,0.12,0.72);pet.add(le);
+  const re=le.clone();re.position.x=0.25;pet.add(re);
+
+  let clock=new THREE.Clock(); let anim={type:'idle',t:0};
+  function playAnim(a){anim.type=a;anim.t=0;}
+
+  function updatePetVisuals() {
+  const baseColor = new THREE.Color(0x67e8f9); // нормальный цвет
+  const darkColor = new THREE.Color(0x222222); // грязь
+  const paleColor = new THREE.Color(0xaaaaff); // бледность от голода
+
+
+  const cleanFactor = state.cleanliness / 100; // 1 = чистый, 0 = грязный
+  const hungerFactor = state.hunger / 100;     // 1 = сытый, 0 = голодный
+
+  // сначала бледнеем от голода
+  const color = baseColor.clone().lerp(paleColor, 1 - hungerFactor);
+
+  // затем темнеем от грязи
+  color.lerp(darkColor, 1 - cleanFactor);
+
+  body.material.color.copy(color);
+
+  // эмиссия зависит от счастья
+  body.material.emissiveIntensity = 0.2 + (state.happiness / 500);
+}
+
+
+  function animate(){
+    requestAnimationFrame(animate);
+    const dt=clock.getDelta();anim.t+=dt;
+    pet.position.y=Math.sin(clock.elapsedTime*2)*0.05;
+
+    if(anim.type==='play'){pet.rotation.z=Math.sin(anim.t*10)*0.2;if(anim.t>1.2)anim.type='idle';}
+    else if(anim.type==='eat'){pet.scale.set(1+Math.sin(anim.t*20)*0.1,1,1);if(anim.t>1.1)anim.type='idle';}
+    else if(anim.type==='sleep'){pet.rotation.x=Math.sin(anim.t*1.5)*0.1;if(anim.t>2)anim.type='idle';}
+    else if(anim.type==='clean'){pet.position.y+=Math.sin(anim.t*12)*0.05;if(anim.t>1.3)anim.type='idle';}
+    else if(anim.type==='kiss'){pet.scale.set(1.1,1.1,1.1);if(anim.t>0.6)anim.type='idle';}
+    else if(anim.type==='valo'){pet.rotation.y=Math.sin(anim.t*20)*0.4;if(anim.t>1.5)anim.type='idle';}
+    else {pet.rotation.x=pet.rotation.y=pet.rotation.z=0;pet.scale.set(1,1,1);}
+    renderer.render(scene,cam);
+  }
+  renderStats(); updatePetVisuals(); animate();
+  </script>
+</body>
+</html>
